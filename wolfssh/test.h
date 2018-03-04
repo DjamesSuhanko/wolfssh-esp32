@@ -24,13 +24,13 @@
     #include <unistd.h>
     #include <netdb.h>
     #include <netinet/in.h>
-    #include <netinet/tcp.h>
+    //#include <netinet/tcp.h>
     #include <arpa/inet.h>
     #include <sys/ioctl.h>
     #include <sys/socket.h>
     #include <pthread.h>
     #include <fcntl.h>
-    #ifndef SO_NOSIGPIPE
+    #ifndef SO_NOSIGPIPE // FIX: ESP32
         #include <signal.h>  /* ignore SIGPIPE */
     #endif
     #define SOCKET_T int
@@ -370,7 +370,7 @@ static INLINE void tcp_socket(SOCKET_T* sockFd)
 #elif defined(CYASSL_MDK_ARM)
     /* nothing to define */
 #else  /* no S_NOSIGPIPE */
-    signal(SIGPIPE, SIG_IGN);
+    // signal(SIGPIPE, SIG_IGN); // FIX: ESP32
 #endif /* S_NOSIGPIPE */
 
 #if defined(TCP_NODELAY)
@@ -410,6 +410,7 @@ static INLINE void tcp_listen(SOCKET_T* sockfd, word16* port, int useAnyAddr)
             err_sys("setsockopt SO_REUSEADDR failed\n");
     }
 #endif
+
 
     if (bind(*sockfd, (const struct sockaddr*)&addr, sizeof(addr)) != 0)
         err_sys("tcp bind failed");

@@ -41,16 +41,21 @@
     #include <time.h>
 #endif
 
+#include "esp_log.h"
+
 
 #ifndef WOLFSSH_DEFAULT_LOG_WIDTH
     #define WOLFSSH_DEFAULT_LOG_WIDTH 120
 #endif
 
 
+static const char *TAG = "WOLFSSH";
+ 
+
 static void DefaultLoggingCb(enum wolfSSH_LogLevel, const char *const);
 
 static wolfSSH_LoggingCb logFunction = DefaultLoggingCb;
-static enum wolfSSH_LogLevel logLevel = WS_LOG_DEFAULT;
+static enum wolfSSH_LogLevel logLevel = WS_LOG_USER; // esp32: max
 #ifdef DEBUG_WOLFSSH
     static int logEnable = 0;
 #endif
@@ -133,7 +138,8 @@ void DefaultLoggingCb(enum wolfSSH_LogLevel level, const char *const msgStr)
         }
     }
 #endif /* NO_TIMESTAMP */
-    fprintf(stdout, "%s[%s] %s\n", timeStr, GetLogStr(level), msgStr);
+    //fprintf(stdout, "%s[%s] %s\n", timeStr, GetLogStr(level), msgStr);
+	ESP_LOGI(TAG, "%s[%s] %s\n", timeStr, GetLogStr(level), msgStr);
 }
 
 

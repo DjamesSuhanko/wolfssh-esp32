@@ -30,6 +30,7 @@
 #pragma once
 
 #include <wolfssh/settings.h>
+#include <stdio.h>
 
 #ifdef __cplusplus
 extern "C" {

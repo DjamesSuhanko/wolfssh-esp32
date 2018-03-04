@@ -32,6 +32,7 @@
 #include <wolfssh/internal.h>
 #include <wolfssh/log.h>
 #include <wolfssl/wolfcrypt/wc_port.h>
+#include "esp_log.h"
 
 #ifdef NO_INLINE
     #include <wolfssh/misc.h>
@@ -105,6 +106,7 @@ WOLFSSH* wolfSSH_new(WOLFSSH_CTX* ctx)
     void*    heap = NULL;
 
     WLOG(WS_LOG_DEBUG, "Entering wolfSSH_new()");
+    ESP_LOGI("WOLFSSH", "Entering wolfSSH_new()");
 
     if (ctx)
         heap = ctx->heap;
@@ -114,11 +116,17 @@ WOLFSSH* wolfSSH_new(WOLFSSH_CTX* ctx)
     }
 
     WLOG(WS_LOG_DEBUG, "Entering wolfSSH_new()");
+    ESP_LOGI("WOLFSSH", "ctx check ok, now malloc WOLFSSH");
 
     ssh = (WOLFSSH*)WMALLOC(sizeof(WOLFSSH), heap, DYNTYPE_SSH);
+    ESP_LOGI("WOLFSSH", "malloc done, SSH Initialization...");
+    if(ssh == NULL) ESP_LOGE("WOLFSSH", "ssh is NULL, passing to SshInit() anyway...");
     ssh = SshInit(ssh, ctx);
+    ESP_LOGI("WOLFSSH", "SshInit OK");
+    if(ssh == NULL) ESP_LOGE("WOLFSSH", "ssh is NULL after SshInit()");
 
     WLOG(WS_LOG_DEBUG, "Leaving wolfSSH_new(), ssh = %p", ssh);
+    ESP_LOGI("WOLFSSH", "Leaving wolfSSH_new()");
 
     return ssh;
 }
@@ -250,14 +258,24 @@ const char acceptState[] = "accept state: %s";
 int wolfSSH_accept(WOLFSSH* ssh)
 {
     WLOG(WS_LOG_DEBUG, "Entering wolfSSH_accept()");
+    ESP_LOGI("WOLFSSH", "Entering wolfSSH_accept()");
 
     if (ssh == NULL)
         return WS_BAD_ARGUMENT;
 
+    ESP_LOGI("WOLFSSH", "ssh is not NULL");
+
     switch (ssh->acceptState) {
 
         case ACCEPT_BEGIN:
+        	ESP_LOGI("WOLFSSH", "acceptState = ACCEPT_BEGIN");
             if ( (ssh->error = SendProtoId(ssh)) < WS_SUCCESS) {
+            	while(ssh->error == WS_WANT_READ) {
+            		// non-blocking tcp
+            		ESP_LOGW("WOLFSSH", "WANT_READ: looping");
+            		ssh->error = DoReceive(ssh);
+            	}
+            	if(ssh->error == WS_SUCCESS) break;
                 WLOG(WS_LOG_DEBUG, acceptError, "BEGIN", ssh->error);
                 return WS_FATAL_ERROR;
             }
@@ -266,8 +284,15 @@ int wolfSSH_accept(WOLFSSH* ssh)
             FALL_THROUGH;
 
         case ACCEPT_SERVER_VERSION_SENT:
+        	ESP_LOGI("WOLFSSH", "acceptState = ACCEPT_SERVER_VERSION_SENT");
             while (ssh->clientState < CLIENT_VERSION_DONE) {
                 if ( (ssh->error = DoProtoId(ssh)) < WS_SUCCESS) {
+                	while(ssh->error == WS_WANT_READ) {
+                		// non-blocking tcp
+                		ESP_LOGW("WOLFSSH", "WANT_READ: looping");
+                		ssh->error = DoReceive(ssh);
+                	}
+                	if(ssh->error == WS_SUCCESS) break;
                     WLOG(WS_LOG_DEBUG, acceptError,
                          "SERVER_VERSION_SENT", ssh->error);
                     return WS_FATAL_ERROR;
@@ -278,7 +303,14 @@ int wolfSSH_accept(WOLFSSH* ssh)
             FALL_THROUGH;
 
         case ACCEPT_CLIENT_VERSION_DONE:
+        	ESP_LOGI("WOLFSSH", "acceptState = ACCEPT_CLIENT_VERSION_DONE");
             if ( (ssh->error = SendKexInit(ssh)) < WS_SUCCESS) {
+            	while(ssh->error == WS_WANT_READ) {
+            		// non-blocking tcp
+            		ESP_LOGW("WOLFSSH", "WANT_READ: looping");
+            		ssh->error = DoReceive(ssh);
+            	}
+            	if(ssh->error == WS_SUCCESS) break;
                 WLOG(WS_LOG_DEBUG, acceptError,
                      "CLIENT_VERSION_DONE", ssh->error);
                 return WS_FATAL_ERROR;
@@ -288,10 +320,18 @@ int wolfSSH_accept(WOLFSSH* ssh)
             FALL_THROUGH;
 
         case ACCEPT_SERVER_KEXINIT_SENT:
+        	ESP_LOGI("WOLFSSH", "acceptState = ACCEPT_SERVER_KEXINIT_SENT");
             while (ssh->isKeying) {
                 if ( (ssh->error = DoReceive(ssh)) < WS_SUCCESS) {
+                	while(ssh->error == WS_WANT_READ) {
+                		// non-blocking tcp
+                		ESP_LOGW("WOLFSSH", "WANT_READ: looping");
+                		ssh->error = DoReceive(ssh);
+                	}
+                	if(ssh->error == WS_SUCCESS) break;
                     WLOG(WS_LOG_DEBUG, acceptError,
                          "SERVER_KEXINIT_SENT", ssh->error);
+                	ESP_LOGE("WOLFSSH", "Accept error: SERVER_KEXINIT_SENT, %d", ssh->error);
                     return WS_FATAL_ERROR;
                 }
             }
@@ -300,8 +340,15 @@ int wolfSSH_accept(WOLFSSH* ssh)
             FALL_THROUGH;
 
         case ACCEPT_KEYED:
+        	ESP_LOGI("WOLFSSH", "acceptState = ACCEPT_KEYED");
             while (ssh->clientState < CLIENT_USERAUTH_REQUEST_DONE) {
                 if ( (ssh->error = DoReceive(ssh)) < 0) {
+                	while(ssh->error == WS_WANT_READ) {
+                		// non-blocking tcp
+                		ESP_LOGW("WOLFSSH", "WANT_READ: looping");
+                		ssh->error = DoReceive(ssh);
+                	}
+                	if(ssh->error == WS_SUCCESS) break;
                     WLOG(WS_LOG_DEBUG, acceptError,
                          "KEYED", ssh->error);
                     return WS_FATAL_ERROR;
@@ -312,6 +359,7 @@ int wolfSSH_accept(WOLFSSH* ssh)
             FALL_THROUGH;
 
         case ACCEPT_CLIENT_USERAUTH_REQUEST_DONE:
+        	ESP_LOGI("WOLFSSH", "acceptState = ACCEPT_CLIENT_USERAUTH_REQUEST_DONE");
             if ( (ssh->error = SendServiceAccept(ssh, ID_SERVICE_USERAUTH)) <
                                                                   WS_SUCCESS) {
                 WLOG(WS_LOG_DEBUG, acceptError,
@@ -324,8 +372,15 @@ int wolfSSH_accept(WOLFSSH* ssh)
             FALL_THROUGH;
 
         case ACCEPT_SERVER_USERAUTH_ACCEPT_SENT:
+        	ESP_LOGI("WOLFSSH", "acceptState = ACCEPT_SERVER_USERAUTH_ACCEPT_SENT");
             while (ssh->clientState < CLIENT_USERAUTH_DONE) {
                 if ( (ssh->error = DoReceive(ssh)) < 0) {
+                	while(ssh->error == WS_WANT_READ) {
+                		// non-blocking tcp
+                		ESP_LOGW("WOLFSSH", "WANT_READ: looping");
+                		ssh->error = DoReceive(ssh);
+                	}
+                	if(ssh->error == WS_SUCCESS) break;
                     WLOG(WS_LOG_DEBUG, acceptError,
                          "SERVER_USERAUTH_ACCEPT_SENT", ssh->error);
                     return WS_FATAL_ERROR;
@@ -336,6 +391,7 @@ int wolfSSH_accept(WOLFSSH* ssh)
             FALL_THROUGH;
 
         case ACCEPT_CLIENT_USERAUTH_DONE:
+        	ESP_LOGI("WOLFSSH", "acceptState = ACCEPT_CLIENT_USERAUTH_DONE");
             if ( (ssh->error = SendUserAuthSuccess(ssh)) < WS_SUCCESS) {
                 WLOG(WS_LOG_DEBUG, acceptError,
                      "CLIENT_USERAUTH_DONE", ssh->error);
@@ -346,8 +402,15 @@ int wolfSSH_accept(WOLFSSH* ssh)
             FALL_THROUGH;
 
         case ACCEPT_SERVER_USERAUTH_SENT:
+        	ESP_LOGI("WOLFSSH", "acceptState = ACCEPT_SERVER_USERAUTH_SENT");
             while (ssh->clientState < CLIENT_DONE) {
                 if ( (ssh->error = DoReceive(ssh)) < 0) {
+                	while(ssh->error == WS_WANT_READ) {
+                		// non-blocking tcp
+                		ESP_LOGW("WOLFSSH", "WANT_READ: looping");
+                		ssh->error = DoReceive(ssh);
+                	}
+                	if(ssh->error == WS_SUCCESS) break;
                     WLOG(WS_LOG_DEBUG, acceptError,
                          "SERVER_USERAUTH_SENT", ssh->error);
                     return WS_FATAL_ERROR;
@@ -358,9 +421,11 @@ int wolfSSH_accept(WOLFSSH* ssh)
             FALL_THROUGH;
 
         case ACCEPT_CLIENT_CHANNEL_REQUEST_DONE:
+        	ESP_LOGI("WOLFSSH", "acceptState = ACCEPT_CLIENT_CHANNEL_REQUEST_DONE");
             if ( (ssh->error = SendChannelOpenConf(ssh)) < WS_SUCCESS) {
                 WLOG(WS_LOG_DEBUG, acceptError,
                      "CLIENT_CHANNEL_REQUEST_DONE", ssh->error);
+                ESP_LOGE("WOLFSSH", "SendChannelOpenConf failed: %d", ssh->error);
                 return WS_FATAL_ERROR;
             }
             ssh->acceptState = ACCEPT_SERVER_CHANNEL_ACCEPT_SENT;
@@ -596,6 +661,7 @@ int wolfSSH_stream_read(WOLFSSH* ssh, byte* buf, word32 bufSz)
     Buffer* inputBuffer;
 
     WLOG(WS_LOG_DEBUG, "Entering wolfSSH_stream_read()");
+    ESP_LOGI("WOLFSSH", "wolfSSH_stream_read()");
 
     if (ssh == NULL || buf == NULL || bufSz == 0 || ssh->channelList == NULL)
         return WS_BAD_ARGUMENT;
@@ -609,6 +675,7 @@ int wolfSSH_stream_read(WOLFSSH* ssh, byte* buf, word32 bufSz)
             return ret;
         }
     }
+    ESP_LOGI("WOLFSSH", "wolfSSH_stream_read: while loop done");
 
     bufSz = min(bufSz, inputBuffer->length - inputBuffer->idx);
     WMEMCPY(buf, inputBuffer->buffer + inputBuffer->idx, bufSz);
